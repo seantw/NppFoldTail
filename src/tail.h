@@ -4,12 +4,19 @@
 #include <vector>
 
 namespace foldtail {
+// Internal contexts for JavaScript styled by the HTML lexer, not lexer IDs.
+inline constexpr int htmlJavaScript=-1,htmlAspJavaScript=-2;
+inline constexpr int htmlCss=-3;
 // Lexilla lexer IDs and comment style IDs (SciLexer.h).
 inline bool supported(int lexer) {
-    return lexer == 2 || lexer == 3 || lexer == 35 || lexer == 38 || lexer == 6 || lexer == 4 ||
+    return lexer == htmlCss || lexer == htmlJavaScript || lexer == htmlAspJavaScript ||
+        lexer == 2 || lexer == 3 || lexer == 35 || lexer == 38 || lexer == 6 || lexer == 4 ||
         lexer == 5 || lexer == 48 || lexer == 69 || lexer == 86 || lexer == 88 || lexer == 111 || lexer == 120;
 }
 inline bool comment(int lexer, int style) {
+    if (lexer == htmlCss) return style == 9;
+    if (lexer == htmlJavaScript) return style >= 42 && style <= 44;
+    if (lexer == htmlAspJavaScript) return style >= 57 && style <= 59;
     if (lexer == 2) return style == 1 || style == 12;
     if (lexer == 48) return style == 1; // YAML # comments, excluding scalar text.
     if (lexer == 4 || lexer == 5) return style == 9;
@@ -25,9 +32,15 @@ inline bool comment(int lexer, int style) {
     return false;
 }
 inline int operatorStyle(int lexer) {
+    if(lexer==htmlCss) return 5;
+    if(lexer==htmlJavaScript) return 50; // SCE_HJ_SYMBOLS
+    if(lexer==htmlAspJavaScript) return 65; // SCE_HJA_SYMBOLS
     return lexer==69?127:lexer==111?16:lexer==88?6:(lexer==120 || lexer==86)?8:lexer==38?5:10;
 }
 inline int singleLineCommentStyle(int lexer) {
+    if(lexer==htmlCss) return 9; // Use HTML's comment colour for embedded CSS comments.
+    if(lexer==htmlJavaScript) return 43;
+    if(lexer==htmlAspJavaScript) return 58;
     if(lexer==3 || lexer==35 || lexer==6 || lexer==111) return 2;
     if(lexer==69) return 125;
     if(lexer==4 || lexer==5 || lexer==38) return 9;
@@ -35,7 +48,10 @@ inline int singleLineCommentStyle(int lexer) {
     return 1; // Python, YAML, PowerShell and R.
 }
 inline bool blockComment(int lexer,int style) {
-    return ((lexer==3 || lexer==35) && (style==1 || style==3 || style==17 || style==18)) ||
+    return (lexer==htmlCss && style==9) ||
+        (lexer==htmlJavaScript && (style==42 || style==44)) ||
+        (lexer==htmlAspJavaScript && (style==57 || style==59)) ||
+        ((lexer==3 || lexer==35) && (style==1 || style==3 || style==17 || style==18)) ||
         (lexer==38 && style==9) || (lexer==69 && style==124) ||
         (lexer==111 && (style==1 || style==3));
 }

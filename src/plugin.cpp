@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <windowsx.h>
+#include <shellapi.h>
 #include <algorithm>
 #include <map>
 #include <memory>
@@ -115,6 +116,7 @@ static std::string readLine(HWND w, LRESULT line) {
     s.resize(static_cast<size_t>(std::max<LRESULT>(0,copied)));
     return s;
 }
+#include "css.h"
 struct TailInfo { std::string suffix, raw; LRESULT line=-1; };
 static TailInfo label(HWND w, LRESULT header,int lexer) {
     if (!foldtail::supported(lexer)) return {};
@@ -127,11 +129,11 @@ static TailInfo label(HWND w, LRESULT header,int lexer) {
         bool code=false;
         for(size_t i=0;i<s.size();++i)
             if (!std::isspace(static_cast<unsigned char>(s[i])) &&
-                !foldtail::comment(lexer,static_cast<int>(send(w,sci::GetStyleAt,pos+i))))
+                !foldtail::comment(lexer,syntaxStyle(w,pos+i,lexer)))
                 code=true;
         if (!code) continue;
         auto result=foldtail::tail(s,lexer,[&](size_t i){
-            return static_cast<int>(send(w,sci::GetStyleAt,pos+i));
+            return syntaxStyle(w,pos+i,lexer);
         });
         return {result,s,line};
     }
@@ -166,6 +168,12 @@ static void placeCaret(HWND w,LRESULT position) {
     send(w,2160,position,position); // SCI_SETSEL: no source text is changed.
     send(w,2169); // SCI_SCROLLCARET
 }
+static void placeCaretAfterFold(View& v,LRESULT line,const Visual& visual) {
+    const auto visible=send(v.window,2220,line); // SCI_VISIBLEFROMDOCLINE
+    const auto next=send(v.window,sci::DocLineFromVisible,visible+1);
+    placeCaret(v.window,next>line && next<send(v.window,sci::GetLineCount)?
+        send(v.window,sci::PositionFromLine,next):visual.selectionTrigger);
+}
 static bool navigateFold(View& v,WPARAM key) {
     if(send(v.window,2570)!=1 || send(v.window,2423)!=0 ||
         send(v.window,2008)!=send(v.window,2009)) return false;
@@ -173,10 +181,7 @@ static bool navigateFold(View& v,WPARAM key) {
     const auto line=send(v.window,2166,caret); // SCI_LINEFROMPOSITION
     const auto visual=collapsedVisual(v,line);
     if(visual && (key==VK_END || (key==VK_RIGHT && caret>=visual->selectionTrigger))) {
-        const auto visible=send(v.window,2220,line); // SCI_VISIBLEFROMDOCLINE
-        const auto next=send(v.window,sci::DocLineFromVisible,visible+1);
-        placeCaret(v.window,next>line && next<send(v.window,sci::GetLineCount)?
-            send(v.window,sci::PositionFromLine,next):visual->selectionTrigger);
+        placeCaretAfterFold(v,line,*visual);
         return true;
     }
     if(key==VK_LEFT && caret==send(v.window,sci::PositionFromLine,line)) {
@@ -249,7 +254,10 @@ static LRESULT CALLBACK subclass(HWND w,UINT msg,WPARAM a,LPARAM b,UINT_PTR id,D
             for(const auto& entry:v.visuals) {
                 const auto& visual=entry.second;
                 if(visual.visible && PtInRect(&visual.mask,point)) {
-                    SetFocus(w);placeCaret(w,visual.selectionTrigger);return 0;
+                    SetFocus(w);
+                    if(point.x>=visual.dots.right) placeCaretAfterFold(v,entry.first,visual);
+                    else placeCaret(w,visual.selectionTrigger);
+                    return 0;
                 }
             }
         }
@@ -312,8 +320,29 @@ static void start() {
 static void toggle();
 static void toggleFirstComment();
 static void toggleLastComment();
+static constexpr wchar_t projectUrl[]=L"https://github.com/seantw/NppFoldTail";
+static HRESULT CALLBACK aboutCallback(HWND window,UINT notification,WPARAM,LPARAM,LONG_PTR) {
+    if(notification==TDN_HYPERLINK_CLICKED) {
+        const auto result=ShellExecuteW(window,L"open",projectUrl,nullptr,nullptr,SW_SHOWNORMAL);
+        if(reinterpret_cast<INT_PTR>(result)<=32)
+            MessageBoxW(window,L"Unable to open the browser.\n\nhttps://github.com/seantw/NppFoldTail",L"NppFoldTail",MB_OK|MB_ICONWARNING);
+    }
+    return S_OK;
+}
 static void about() {
-    MessageBoxW(npp.npp,L"NppFoldTail " NPPFOLDTAIL_VERSION_W L" (x64)\n\nA Notepad++ plugin for cleaner, more readable code folding.",L"NppFoldTail",MB_OK);
+    TASKDIALOGCONFIG dialog{};
+    dialog.cbSize=sizeof(dialog);
+    dialog.hwndParent=npp.npp;
+    dialog.dwFlags=TDF_ENABLE_HYPERLINKS|TDF_ALLOW_DIALOG_CANCELLATION|TDF_POSITION_RELATIVE_TO_WINDOW;
+    dialog.dwCommonButtons=TDCBF_OK_BUTTON;
+    dialog.pszWindowTitle=L"NppFoldTail";
+    dialog.pszMainInstruction=L"NppFoldTail " NPPFOLDTAIL_VERSION_W L" (x64)";
+    dialog.pszContent=L"A Notepad++ plugin for cleaner, more readable code folding.\n\n"
+        L"<a href=\"https://github.com/seantw/NppFoldTail\">https://github.com/seantw/NppFoldTail</a>";
+    dialog.pfCallback=aboutCallback;
+    if(FAILED(TaskDialogIndirect(&dialog,nullptr,nullptr,nullptr)))
+        MessageBoxW(npp.npp,L"NppFoldTail " NPPFOLDTAIL_VERSION_W L" (x64)\n\n"
+            L"A Notepad++ plugin for cleaner, more readable code folding.\n\nhttps://github.com/seantw/NppFoldTail",L"NppFoldTail",MB_OK);
 }
 static FuncItem commands[]={
     {L"Enable",toggle,0,true,nullptr},
@@ -372,6 +401,7 @@ static void toggle() {
     CheckMenuItem(GetMenu(npp.npp),commands[0].id,MF_BYCOMMAND|(enabled?MF_CHECKED:MF_UNCHECKED));
     for(auto& v:views) if(IsWindow(v.window)) {
         clearVisuals(v);
+        refreshCssFolds(v.window);
         applyPresentation(v);
         InvalidateRect(v.window,nullptr,FALSE);
     }
@@ -384,10 +414,21 @@ __declspec(dllexport) FuncItem* getFuncsArray(int* n) { *n=static_cast<int>(size
 // Only the common notification header is read; full SCNotification is not needed.
 __declspec(dllexport) void beNotified(NMHDR* notification) {
     if(!notification) return;
+    if(notification->code==2008 && !applyingCss) { // SCN_MODIFIED prefix from Scintilla.h.
+        struct Modification {NMHDR header;LRESULT position;int ch,modifiers,modificationType;};
+        const auto change=reinterpret_cast<const Modification*>(notification);
+        if(change->modificationType&0xf) { // text, styles or native fold levels changed
+            for(const auto& view:views) if(view.window==notification->hwndFrom) {
+                cssDocuments[send(view.window,sci::GetDocPointer)].dirty=true;
+                break;
+            }
+        }
+    }
     if(notification->code==1001) {loadSettings();start();} // NPPN_READY
     if(notification->code==1009) { // NPPN_SHUTDOWN
         enabled=false;
         for(auto& v:views) if(IsWindow(v.window)) {
+            refreshCssFolds(v.window);
             clearVisuals(v); if(v.tooltip) DestroyWindow(v.tooltip);v.tooltip=nullptr;
             KillTimer(v.window,v.timer);
             if(v.addedClipChildren) SetWindowLongPtr(v.window,GWL_STYLE,GetWindowLongPtr(v.window,GWL_STYLE)&~static_cast<LONG_PTR>(WS_CLIPCHILDREN));

@@ -25,7 +25,7 @@ windres --target=pe-x86-64 -I src -i src/plugin.rc -o build/version.o
 if errorlevel 1 goto :failed
 g++ -m64 -std=c++17 -Os -s -ffunction-sections -fdata-sections -Wall -Wextra -Werror -shared -static -static-libgcc -static-libstdc++ ^
   src/plugin.cpp build/version.o "%CRT_FP10%" -o build/NppFoldTail.dll ^
-  -lcomctl32 -luser32 -lgdi32 -Wl,--gc-sections -Wl,--no-insert-timestamp
+  -lcomctl32 -luser32 -lgdi32 -lshell32 -Wl,--gc-sections -Wl,--no-insert-timestamp
 if errorlevel 1 goto :failed
 
 del /q build\version.o

@@ -34,7 +34,8 @@ def example(): …
 | C, C++, C#, Java, JavaScript, TypeScript, Go, Swift | Closing delimiters and supported block comments |
 | CSS, Perl, PHP, Rust, PowerShell, R | Brace blocks; comment support varies as noted below |
 | JSON, JSON5 | Objects and arrays |
-| HTML, XML | Elements and comments; XML tag names are case-sensitive |
+| HTML, XML | Elements and comments, plus brace blocks and comments in embedded JavaScript; XML tag names are case-sensitive |
+| HTML `<style>` (also in PHP documents) | Adds folding for multiline CSS brace blocks and `/* */` comments, including nested rules |
 | Python, YAML (.yml/.yaml) | Ellipsis only, without a closing delimiter |
 
 ## Install
@@ -43,10 +44,10 @@ Requires Windows and Notepad++ x64. x86 and ARM64 builds are not provided.
 
 Manually tested with Notepad++ v8.9.8.1 (64-bit). Compatibility with other versions has not been verified.
 
-1. Download `NppFoldTail-0.8.3-x64.zip` from [Releases](https://github.com/seantw/NppFoldTail/releases).
+1. Download `NppFoldTail-0.9.0-x64.zip` from [Releases](https://github.com/seantw/NppFoldTail/releases).
 2. Close all Notepad++ windows.
 3. Extract the ZIP and place `NppFoldTail.dll` in `Notepad++/plugins/NppFoldTail/`.
-4. Restart Notepad++ and check **Plugins → NppFoldTail → About NppFoldTail** for version **0.8.3**.
+4. Restart Notepad++ and check **Plugins → NppFoldTail → About NppFoldTail** for version **0.9.0**.
 
 ## Options
 
@@ -64,7 +65,7 @@ All three settings are saved immediately to `NppFoldTail.ini` in Notepad++'s plu
 
 ## Selecting folded content
 
-For normal single-caret navigation, Right at a collapsed header's display boundary and End on that header jump to the next visible line's start. Left at that next line's start returns to the boundary. Up/Down navigation clamps the caret to the visible header text. Clicking synthetic text other than `…` places the caret at the boundary; clicking `…` still expands the block. Ctrl/Alt shortcuts and rectangular/multiple selections retain their normal handling.
+For normal single-caret navigation, Right at a collapsed header's display boundary and End on that header jump to the next visible line's start. Left at that next line's start returns to the boundary. Up/Down navigation clamps the caret to the visible header text. Clicking synthetic text or blank space after `…` moves the caret to the next visible line's start; clicking `…` still expands the block. If there is no next visible line, the caret stays at the folded header's display boundary. Ctrl/Alt shortcuts and rectangular/multiple selections retain their normal handling.
 
 When a single normal text selection reaches the end of a collapsed header, it extends through the complete hidden block and its closing line, excluding the following newline. The preview receives the selection background colour.
 
@@ -86,9 +87,18 @@ GitHub Actions also compiles x64 and x86 builds. For releases, use the tested x6
 
 - Wrapped header lines and multiline HTML/XML opening tags are not supported.
 - PHP support covers brace blocks and `/* */` comments, not alternative `endif`/`endforeach` syntax.
-- Other embedded script languages in HTML and XML CDATA previews are not supported.
+- Embedded script languages other than JavaScript and PHP, and XML CDATA previews, are not supported.
 - PowerShell block comments are not previewed.
 - Synthetic preview text cannot be edited directly.
+- Embedded CSS folds are rebuilt after text or lexer changes, not while scrolling. Strings and URLs are excluded from brace/comment matching. Only complete multiline pairs create new folds; disabling the plugin restores native folding. CSS colours remain those provided by Notepad++'s HTML mode.
+
+## Changes in 0.9.0
+
+- Adds folding for multiline CSS brace blocks and comments inside HTML `<style>` elements, including nested rules and `@media` blocks.
+- Adds folding previews for JavaScript blocks and comments embedded in HTML `<script>` elements.
+- Moves the caret to the next visible line's start when clicking synthetic text or blank space after `…`; clicking `…` still expands the block.
+- Adds a clickable GitHub project link to the About dialog.
+- Preserves existing preview, tooltip and whole-block selection behaviour for the new embedded-language support.
 
 ## Changes in 0.8.3
 

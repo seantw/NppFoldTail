@@ -58,8 +58,13 @@ static LRESULT headerCut(HWND w,LRESULT line,LRESULT last,const std::string& tex
     auto cut=send(w,2136,line); // SCI_GETLINEENDPOSITION
     for(size_t j=0;j<text.size();++j) {
         if((text[j]!='{' && !(lexer==120 && text[j]=='[')) ||
-            send(w,sci::GetStyleAt,pos+j)!=foldtail::operatorStyle(lexer)) continue;
-        const auto match=send(w,2353,pos+j,0); // SCI_BRACEMATCH
+            syntaxStyle(w,pos+j,lexer)!=foldtail::operatorStyle(lexer)) continue;
+        auto match=send(w,2353,pos+j,0); // SCI_BRACEMATCH
+        if(lexer==foldtail::htmlCss) {
+            const auto& braces=cssDocuments.at(send(w,sci::GetDocPointer)).braces;
+            const auto found=braces.find(pos+j);
+            match=found==braces.end()?-1:found->second;
+        }
         const auto closeLine=match>=0 ? send(w,2166,match) : -1;
         if(closeLine>line && closeLine<=last) {cut=pos+j+1;break;}
     }
@@ -69,14 +74,14 @@ static LRESULT commentCut(HWND w,LRESULT header,LRESULT last,const std::string& 
     const auto start=text.find_first_not_of(" \t");
     if(start==std::string::npos || text.compare(start,2,"/*")!=0 || text.find("*/",start+2)!=std::string::npos) return -1;
     const auto pos=send(w,sci::PositionFromLine,header);
-    if(!foldtail::blockComment(lexer,static_cast<int>(send(w,sci::GetStyleAt,pos+start)))) return -1;
+    if(!foldtail::blockComment(lexer,syntaxStyle(w,pos+start,lexer))) return -1;
     for(auto line=last;line>header && line>=last-8;--line) {
         if(send(w,sci::GetLineVisible,line)) continue;
         const auto endText=readLine(w,line);
         const auto end=endText.rfind("*/");
         if(end==std::string::npos) continue;
         const auto endPos=send(w,sci::PositionFromLine,line)+end;
-        if(foldtail::blockComment(lexer,static_cast<int>(send(w,sci::GetStyleAt,endPos)))) return pos+start+2;
+        if(foldtail::blockComment(lexer,syntaxStyle(w,endPos,lexer))) return pos+start+2;
     }
     return -1;
 }
@@ -92,10 +97,10 @@ static TrailingComment trailingComment(HWND w,LRESULT line,int lexer,LRESULT aft
     const auto pos=send(w,sci::PositionFromLine,line);
     bool code=false;
     for(size_t i=0;i<text.size();++i) {
-        const bool isComment=foldtail::comment(lexer,static_cast<int>(send(w,sci::GetStyleAt,pos+i)));
+        const bool isComment=foldtail::comment(lexer,syntaxStyle(w,pos+i,lexer));
         if(isComment && code && pos+static_cast<LRESULT>(i)>=after) {
             auto end=i;
-            while(end<text.size() && foldtail::comment(lexer,static_cast<int>(send(w,sci::GetStyleAt,pos+end)))) ++end;
+            while(end<text.size() && foldtail::comment(lexer,syntaxStyle(w,pos+end,lexer))) ++end;
             while(end>i && std::isspace(static_cast<unsigned char>(text[end-1]))) --end;
             return {pos+static_cast<LRESULT>(i),text.substr(i,end-i)};
         }
@@ -133,7 +138,10 @@ static HtmlInfo htmlInfo(HWND w,LRESULT header,LRESULT last,const std::string& t
     return {};
 }
 static void update(View& v,bool includeHidden=false) {
-    if(v.busy) return;
+    if(v.busy || applyingCss) return;
+    const auto document=send(v.window,sci::GetDocPointer);
+    if(document!=v.doc) cssDocuments[document].dirty=true;
+    refreshCssFolds(v.window);
     if(!applyPresentation(v)) {
         if(!v.visuals.empty()) {clearVisuals(v);InvalidateRect(v.window,nullptr,FALSE);}
         return;
@@ -166,9 +174,14 @@ static void update(View& v,bool includeHidden=false) {
         const bool phpCode=(lexer==4 || lexer==69) &&
             ((headerStyle>=118 && headerStyle<=127) ||
              (firstNonSpace!=std::string::npos && firstText.compare(firstNonSpace,5,"<?php")==0));
-        const auto codeLexer=phpCode?69:lexer;
+        const bool htmlLexer=lexer==4 || lexer==5 || lexer==69;
+        const bool jsCode=htmlLexer && headerStyle>=40 && headerStyle<=53;
+        const bool aspJsCode=htmlLexer && headerStyle>=55 && headerStyle<=68;
+        const bool cssCode=firstNonSpace!=std::string::npos && syntaxStyle(w,pos+firstNonSpace,foldtail::htmlCss)!=0;
+        const auto codeLexer=cssCode?foldtail::htmlCss:phpCode?69:jsCode?foldtail::htmlJavaScript:
+            aspJsCode?foldtail::htmlAspJavaScript:lexer;
         const bool isIndentBased=lexer==2 || lexer==48; // Python and YAML folds have no closing suffix.
-        const bool isHtml=(lexer==4 || lexer==5) && !phpCode;
+        const bool isHtml=(lexer==4 || lexer==5) && !phpCode && !jsCode && !aspJsCode && !cssCode;
         const auto html=isHtml?htmlInfo(w,line,last,firstText,lexer==5):HtmlInfo{};
         if(isHtml && html.cut<0) continue;
         const auto commentPos=isHtml || isIndentBased?-1:commentCut(w,line,last,firstText,codeLexer);
