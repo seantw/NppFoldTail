@@ -352,10 +352,13 @@ static void paintVisuals(View& v) {
         const int overlayWidth=visual.mask.right-visual.mask.left;
         const int width=client.right; // Horizontal scrolling changes clipping, not bitmap content.
         const int height=visual.height;
+        const auto ascent=static_cast<int>(send(v.window,2526));
+        const auto descent=static_cast<int>(send(v.window,2528));
         if(width<=0 || overlayWidth<=0 || height<=0) {DeleteObject(font);continue;}
         auto& cache=visual.cache;
         // Position changes retain the image; only content/appearance/viewport size rebuild it.
         if(cache && (cache->width!=width || cache->height!=height ||
+            cache->extraAscent!=ascent || cache->extraDescent!=descent ||
             cache->foreground!=foreground || cache->commentColour!=commentColour ||
             cache->markerForeground!=markerForeground || cache->markerBackground!=markerBackground ||
             cache->background!=background || std::memcmp(&cache->font,&fontInfo,sizeof(fontInfo))!=0)) cache.reset();
@@ -364,13 +367,14 @@ static void paintVisuals(View& v) {
             next->bitmap=CreateCompatibleBitmap(dc,width,height);
             if(!next->bitmap) {DeleteObject(font);continue;}
             next->width=width;next->height=height;next->font=fontInfo;
+            next->extraAscent=ascent;next->extraDescent=descent;
             next->foreground=foreground;next->commentColour=commentColour;next->background=background;
             next->markerForeground=markerForeground;next->markerBackground=markerBackground;
             auto oldBitmap=SelectObject(buffer,next->bitmap);
             auto oldFont=SelectObject(buffer,font);
             SetTextColor(buffer,foreground);SetBkColor(buffer,background);
             TEXTMETRICW metrics{};GetTextMetricsW(buffer,&metrics);
-            const auto y=std::max<LONG>(0,(height-metrics.tmHeight)/2);
+            const auto y=std::max<LONG>(0,ascent+(height-ascent-descent-metrics.tmHeight)/2);
             RECT mask{0,0,width,height};
             SetBkColor(buffer,normalBackground);
             ExtTextOutW(buffer,0,0,ETO_OPAQUE,&mask,nullptr,0,nullptr);

@@ -22,7 +22,7 @@ static void refreshCssFolds(HWND w) {
     if(applyingCss) return;
     const auto pointer=send(w,sci::GetDocPointer);
     const auto lexer=static_cast<int>(send(w,sci::GetLexer));
-    const bool active=enabled && (lexer==4 || lexer==69);
+    const bool active=enabled && cssFolding && (lexer==4 || lexer==69);
     auto& saved=cssDocuments[pointer];
     if(!saved.dirty && saved.active==active && saved.lexer==lexer) return;
     if(!active && !saved.active) {

@@ -13,6 +13,7 @@
 #include <string>
 #include "tail.h"
 #include "version.h"
+#include "resource.h"
 
 // Minimal, public Notepad++ plugin ABI. No SDK binaries required.
 struct NppData { HWND npp, main, second; };
@@ -35,13 +36,16 @@ static NppData npp{};
 static bool enabled = true;
 static bool showFirstComment = false;
 static bool showLastComment = false;
+static bool cssFolding = true;
+static bool customLineSpacing = false;
+static int extraAscent = 0,extraDescent = 0;
 struct PreviewBitmap {
     HBITMAP bitmap{};
     HWND overlay{};
     LOGFONTW font{};
     COLORREF foreground{}, commentColour{}, background{};
     COLORREF markerForeground{}, markerBackground{};
-    int width{}, height{};
+    int width{}, height{}, extraAscent{}, extraDescent{};
     ~PreviewBitmap() {if(overlay) DestroyWindow(overlay);if(bitmap) DeleteObject(bitmap);}
 };
 struct Visual {
@@ -65,6 +69,8 @@ struct View {
     bool presentationActive{};
     bool settingFoldFlags{};
     bool addedClipChildren{};
+    bool spacingCaptured{},settingSpacing{};
+    int originalAscent{},originalDescent{};
     WPARAM originalFoldFlags=16; // Notepad++ default: line after contracted fold.
     bool coloursCaptured{};
     bool colourSet[2]{};
@@ -76,6 +82,22 @@ struct View {
 static View views[2];
 static LRESULT send(HWND w, UINT m, WPARAM a=0, LPARAM b=0) {
     return SendMessage(w,m,a,b);
+}
+static void applyLineSpacing(View& v) {
+    const bool active=enabled && customLineSpacing;
+    if(active && !v.spacingCaptured) {
+        v.originalAscent=static_cast<int>(send(v.window,2526));
+        v.originalDescent=static_cast<int>(send(v.window,2528));
+        v.spacingCaptured=true;
+    }
+    if(!v.spacingCaptured) return;
+    const auto above=active?extraAscent:v.originalAscent;
+    const auto below=active?extraDescent:v.originalDescent;
+    v.settingSpacing=true;
+    if(send(v.window,2526)!=above) send(v.window,2525,above);
+    if(send(v.window,2528)!=below) send(v.window,2527,below);
+    v.settingSpacing=false;
+    if(!active) v.spacingCaptured=false;
 }
 static void suppressLines(View& v) {
     for(int i=0;i<2;++i) {
@@ -96,6 +118,7 @@ static void restoreLines(View& v) {
     v.coloursCaptured=false;
 }
 static bool applyPresentation(View& v) {
+    applyLineSpacing(v);
     const bool active=enabled && foldtail::supported(static_cast<int>(send(v.window,sci::GetLexer)));
     if(active!=v.presentationActive) {
         send(v.window,sci::FoldDisplayTextSetStyle,active?0:v.originalStyle);
@@ -205,6 +228,11 @@ static void clampFoldCaret(View& v) {
 }
 static LRESULT CALLBACK subclass(HWND w,UINT msg,WPARAM a,LPARAM b,UINT_PTR id,DWORD_PTR ref) {
     auto& v=*reinterpret_cast<View*>(ref);
+    if((msg==2525 || msg==2527) && !v.settingSpacing && v.spacingCaptured) {
+        if(msg==2525) v.originalAscent=static_cast<int>(a);
+        else v.originalDescent=static_cast<int>(a);
+        if(enabled && customLineSpacing) a=msg==2525?extraAscent:extraDescent;
+    }
     if(msg==WM_PAINT) {
         // Place child overlays before Scintilla paints, so its clipping region
         // already excludes their new positions after a scroll.
@@ -318,8 +346,7 @@ static void start() {
     }
 }
 static void toggle();
-static void toggleFirstComment();
-static void toggleLastComment();
+static void showSettings();
 static constexpr wchar_t projectUrl[]=L"https://github.com/seantw/NppFoldTail";
 static HRESULT CALLBACK aboutCallback(HWND window,UINT notification,WPARAM,LPARAM,LONG_PTR) {
     if(notification==TDN_HYPERLINK_CLICKED) {
@@ -346,8 +373,7 @@ static void about() {
 }
 static FuncItem commands[]={
     {L"Enable",toggle,0,true,nullptr},
-    {L"First Comment",toggleFirstComment,0,false,nullptr},
-    {L"Last Comment",toggleLastComment,0,false,nullptr},
+    {L"Settings...",showSettings,0,false,nullptr},
     {L"",nullptr,0,false,nullptr},
     {L"About NppFoldTail",about,0,false,nullptr}
 };
@@ -366,45 +392,41 @@ static void loadSettings() {
     enabled=GetPrivateProfileIntW(L"Settings",L"Enable",1,settingsPath.c_str())!=0;
     showFirstComment=GetPrivateProfileIntW(L"Settings",L"FirstComment",0,settingsPath.c_str())!=0;
     showLastComment=GetPrivateProfileIntW(L"Settings",L"LastComment",0,settingsPath.c_str())!=0;
+    cssFolding=GetPrivateProfileIntW(L"Settings",L"CssFolding",1,settingsPath.c_str())!=0;
+    customLineSpacing=GetPrivateProfileIntW(L"Settings",L"CustomLineSpacing",0,settingsPath.c_str())!=0;
+    extraAscent=std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Settings",L"ExtraAscent",0,settingsPath.c_str())),0,20);
+    extraDescent=std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Settings",L"ExtraDescent",0,settingsPath.c_str())),0,20);
     commands[0].checked=enabled;
-    commands[1].checked=showFirstComment;
-    commands[2].checked=showLastComment;
-    for(int i=0;i<3;++i)
-        CheckMenuItem(GetMenu(npp.npp),commands[i].id,MF_BYCOMMAND|(commands[i].checked?MF_CHECKED:MF_UNCHECKED));
+    CheckMenuItem(GetMenu(npp.npp),commands[0].id,MF_BYCOMMAND|(enabled?MF_CHECKED:MF_UNCHECKED));
 }
-static void saveSettings() {
+static bool saveSettings() {
     bool saved=!settingsPath.empty();
     if(saved) {
         saved=WritePrivateProfileStringW(L"Settings",L"Enable",enabled?L"1":L"0",settingsPath.c_str())!=0;
         saved=(WritePrivateProfileStringW(L"Settings",L"FirstComment",showFirstComment?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"LastComment",showLastComment?L"1":L"0",settingsPath.c_str())!=0) && saved;
+        saved=(WritePrivateProfileStringW(L"Settings",L"CssFolding",cssFolding?L"1":L"0",settingsPath.c_str())!=0) && saved;
+        saved=(WritePrivateProfileStringW(L"Settings",L"CustomLineSpacing",customLineSpacing?L"1":L"0",settingsPath.c_str())!=0) && saved;
+        saved=(WritePrivateProfileStringW(L"Settings",L"ExtraAscent",std::to_wstring(extraAscent).c_str(),settingsPath.c_str())!=0) && saved;
+        saved=(WritePrivateProfileStringW(L"Settings",L"ExtraDescent",std::to_wstring(extraDescent).c_str(),settingsPath.c_str())!=0) && saved;
     }
     if(!saved) MessageBoxW(npp.npp,L"Unable to save NppFoldTail settings. Check that the plugins config directory is writable.",L"NppFoldTail",MB_OK|MB_ICONWARNING);
+    return saved;
 }
-static void toggleComment(bool& option,int index) {
-    option=!option;
-    commands[index].checked=option;
-    saveSettings();
-    CheckMenuItem(GetMenu(npp.npp),commands[index].id,MF_BYCOMMAND|(option?MF_CHECKED:MF_UNCHECKED));
+static void applySettings() {
+    commands[0].checked=enabled;
+    CheckMenuItem(GetMenu(npp.npp),commands[0].id,MF_BYCOMMAND|(enabled?MF_CHECKED:MF_UNCHECKED));
     for(auto& v:views) if(IsWindow(v.window)) {
         clearVisuals(v);
         update(v);
         InvalidateRect(v.window,nullptr,FALSE);
     }
 }
-static void toggleFirstComment() {toggleComment(showFirstComment,1);}
-static void toggleLastComment() {toggleComment(showLastComment,2);}
+#include "settings.h"
 static void toggle() {
     enabled=!enabled;
-    commands[0].checked=enabled;
     saveSettings();
-    CheckMenuItem(GetMenu(npp.npp),commands[0].id,MF_BYCOMMAND|(enabled?MF_CHECKED:MF_UNCHECKED));
-    for(auto& v:views) if(IsWindow(v.window)) {
-        clearVisuals(v);
-        refreshCssFolds(v.window);
-        applyPresentation(v);
-        InvalidateRect(v.window,nullptr,FALSE);
-    }
+    applySettings();
 }
 extern "C" {
 __declspec(dllexport) BOOL isUnicode() { return TRUE; }
@@ -428,6 +450,7 @@ __declspec(dllexport) void beNotified(NMHDR* notification) {
     if(notification->code==1009) { // NPPN_SHUTDOWN
         enabled=false;
         for(auto& v:views) if(IsWindow(v.window)) {
+            applyLineSpacing(v);
             refreshCssFolds(v.window);
             clearVisuals(v); if(v.tooltip) DestroyWindow(v.tooltip);v.tooltip=nullptr;
             KillTimer(v.window,v.timer);

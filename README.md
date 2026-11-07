@@ -22,7 +22,8 @@ def example(): …
 - Click `…` to expand; hover to preview the first 10 source lines. Longer blocks end with a separate `⋮` line, approximately centred below the last displayed nonblank line.
 - The ` … ` marker uses the foreground and background colours of Notepad++'s **Brace highlight style**. Selection colours take precedence while the folded block is selected.
 - Optionally shows trailing comments from the first and last folded lines, using the language's single-line comment colour.
-- Remembers menu settings across Notepad++ restarts.
+- Provides a Settings dialog for comments, embedded CSS folding and optional line spacing, while keeping Enable as a quick menu toggle.
+- Remembers settings across Notepad++ restarts and preserves existing preferences when upgrading.
 - Highlights the preview when the hidden block is selected. Selecting through a collapsed header extends the actual selection through the hidden content for copying or deletion.
 - Reuses cached preview windows while scrolling and repaints only when their content or appearance changes, reducing flicker with many folded blocks.
 - Hides folding lines only for supported languages; other languages retain Notepad++'s normal folding display.
@@ -44,24 +45,31 @@ Requires Windows and Notepad++ x64. x86 and ARM64 builds are not provided.
 
 Manually tested with Notepad++ v8.9.8.1 (64-bit). Compatibility with other versions has not been verified.
 
-1. Download `NppFoldTail-0.9.0-x64.zip` from [Releases](https://github.com/seantw/NppFoldTail/releases).
+1. Download `NppFoldTail-0.10.0-x64.zip` from [Releases](https://github.com/seantw/NppFoldTail/releases).
 2. Close all Notepad++ windows.
 3. Extract the ZIP and place `NppFoldTail.dll` in `Notepad++/plugins/NppFoldTail/`.
-4. Restart Notepad++ and check **Plugins → NppFoldTail → About NppFoldTail** for version **0.9.0**.
+4. Restart Notepad++ and check **Plugins → NppFoldTail → About NppFoldTail** for version **0.10.0**.
 
 ## Options
 
-Under **Plugins → NppFoldTail**:
+Under **Plugins → NppFoldTail**, **Enable** remains a quick toggle. Open **Settings...** to configure all options:
 
 | Option | Default | Behaviour |
 |---|---|---|
 | Enable | On | Turns folding previews on or off |
 | First Comment | Off | Appends a trailing comment from the folded header |
 | Last Comment | Off | Appends a trailing comment from the closing line |
+| Fold CSS inside `<style>` | On | Adds folds for embedded CSS brace blocks and multiline comments |
+| Custom line spacing | Off | Sets extra space above and below each display line in both editor views |
+| Space above / below | 0 / 0 pixels | Each side accepts a whole number from 0 to 20 when custom spacing is enabled |
 
 When both selected comments are present, they are separated by ` ～ `. No separator is added if either selected comment is missing. Comment blocks themselves are not duplicated as trailing comments. These options affect only the preview; source text and tooltip contents are unchanged.
 
-All three settings are saved immediately to `NppFoldTail.ini` in Notepad++'s plugin configuration directory and restored on restart.
+**Apply** saves the settings and updates the editor immediately. **OK** applies and closes the dialog. **Cancel** discards changes made since the last Apply. **Restore Defaults** fills in the default values; use Apply or OK to save them.
+
+Settings are saved to `NppFoldTail.ini` in Notepad++'s plugin configuration directory and restored on restart. Existing Enable / First Comment / Last Comment values are preserved when upgrading.
+
+Custom line spacing is off by default, so the plugin leaves existing editor spacing alone. Turning custom spacing or Enable off restores each view's original spacing. Spacing affects display only, across languages, and does not change font size or document text. CSS folding can be disabled independently while other previews remain enabled.
 
 ## Selecting folded content
 
@@ -91,6 +99,14 @@ GitHub Actions also compiles x64 and x86 builds. For releases, use the tested x6
 - PowerShell block comments are not previewed.
 - Synthetic preview text cannot be edited directly.
 - Embedded CSS folds are rebuilt after text or lexer changes, not while scrolling. Strings and URLs are excluded from brace/comment matching. Only complete multiline pairs create new folds; disabling the plugin restores native folding. CSS colours remain those provided by Notepad++'s HTML mode.
+
+## Changes in 0.10.0
+
+- Moves First Comment and Last Comment into a Settings dialog, with Enable retained as a quick menu toggle.
+- Adds an independent switch for CSS folding inside HTML `<style>` elements.
+- Adds optional extra line spacing above and below text (0-20 pixels per side) in both editor views, with folded preview text aligned to the adjusted spacing.
+- Adds Apply, OK, Cancel and Restore Defaults controls. Settings are saved to the existing INI file and restored on restart.
+- Preserves existing preferences. Custom line spacing is off by default; disabling it or the plugin restores each view's original spacing.
 
 ## Changes in 0.9.0
 
