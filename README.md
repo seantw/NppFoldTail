@@ -89,7 +89,7 @@ Requires x86_64 MinGW-w64 `g++` / `windres` on PATH. The development environment
 
 Creates `build/NppFoldTail.dll` using size optimisation and static C++ runtime linking.
 
-GitHub Actions also compiles x64 and x86 builds. For releases, use the tested x64 CI ZIP, which contains `NppFoldTail.dll` and `LICENSE` at its root. The x86 CI build is experimental and has not been manually tested or published for Plugins Admin.
+GitHub Actions also compiles x64 and x86 builds. Releases may use either a local x64 build or the x64 CI artifact. Prefer a build manually tested in Notepad++; package `NppFoldTail.dll` and `LICENSE` at the ZIP root, and calculate the nppPluginList SHA-256 from the final uploaded ZIP. The x86 CI build is experimental and has not been manually tested or published for Plugins Admin.
 
 ## Limitations
 
