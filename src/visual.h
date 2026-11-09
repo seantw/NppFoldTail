@@ -34,14 +34,16 @@ static void clearVisuals(View& v) {
     }
     v.visuals.clear();v.pressed=-1;
 }
+static int displayFontSize(HWND w,int style) {
+    auto size=send(w,2062,style); // SCI_STYLEGETSIZEFRACTIONAL (hundredths of a point)
+    if(size<=0) size=1000;
+    return static_cast<int>(size+100*send(w,2374)); // SCI_GETZOOM
+}
 static HFONT visualFont(HWND w,int style,HDC dc) {
     char face[256]{};
     send(w,2486,style,reinterpret_cast<LPARAM>(face)); // SCI_STYLEGETFONT
     auto name=wide(face,CP_UTF8);
-    auto size=send(w,2062,style); // SCI_STYLEGETSIZEFRACTIONAL (hundredths of a point)
-    if(size<=0) size=1000;
-    size+=100*send(w,2374); // SCI_GETZOOM
-    auto height=std::max(1,MulDiv(static_cast<int>(size),GetDeviceCaps(dc,LOGPIXELSY),7200));
+    auto height=std::max(1,MulDiv(displayFontSize(w,style),GetDeviceCaps(dc,LOGPIXELSY),7200));
     return CreateFontW(-height,0,0,0,send(w,2483,style)?FW_BOLD:FW_NORMAL,
         static_cast<DWORD>(send(w,2484,style)),FALSE,FALSE,DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,FIXED_PITCH,
@@ -88,7 +90,8 @@ static LRESULT commentCut(HWND w,LRESULT header,LRESULT last,const std::string& 
 static std::wstring blockTooltip(HWND w,LRESULT header,LRESULT last,UINT cp) {
     std::vector<std::wstring> lines;
     for(auto line=header;line<=last && line<header+10;++line) lines.push_back(wide(readLine(w,line),cp));
-    return foldtail::preview(lines,last>=header+10);
+    const auto tabWidth=std::max<LRESULT>(1,send(w,2121)); // SCI_GETTABWIDTH
+    return foldtail::preview(std::move(lines),last>=header+10,static_cast<size_t>(tabWidth));
 }
 struct TrailingComment {LRESULT position=-1;std::string text;};
 static TrailingComment trailingComment(HWND w,LRESULT line,int lexer,LRESULT after) {
@@ -141,6 +144,7 @@ static void update(View& v,bool includeHidden=false) {
     if(v.busy || applyingCss) return;
     const auto document=send(v.window,sci::GetDocPointer);
     if(document!=v.doc) cssDocuments[document].dirty=true;
+    refreshMarkdownFolds(v);
     refreshCssFolds(v.window);
     if(!applyPresentation(v)) {
         if(!v.visuals.empty()) {clearVisuals(v);InvalidateRect(v.window,nullptr,FALSE);}
@@ -160,7 +164,8 @@ static void update(View& v,bool includeHidden=false) {
     const auto total=send(w,sci::GetLineCount);
     const auto lexer=static_cast<int>(send(w,sci::GetLexer));
     const auto cp=static_cast<UINT>(send(w,2137)); // SCI_GETCODEPAGE
-    if(foldtail::supported(lexer)) for(LRESULT i=0;i<count;++i) {
+    const bool markdown=v.markdownActive;
+    if(markdown || foldtail::supported(lexer)) for(LRESULT i=0;i<count;++i) {
         const auto line=send(w,sci::DocLineFromVisible,first+i);
         if(line<0 || line>=total) break;
         if(next.count(line) || !(send(w,sci::GetFoldLevel,line)&0x2000) || send(w,sci::GetFoldExpanded,line)) continue;
@@ -180,7 +185,7 @@ static void update(View& v,bool includeHidden=false) {
         const bool cssCode=firstNonSpace!=std::string::npos && syntaxStyle(w,pos+firstNonSpace,foldtail::htmlCss)!=0;
         const auto codeLexer=cssCode?foldtail::htmlCss:phpCode?69:jsCode?foldtail::htmlJavaScript:
             aspJsCode?foldtail::htmlAspJavaScript:lexer;
-        const bool isIndentBased=lexer==2 || lexer==48; // Python and YAML folds have no closing suffix.
+        const bool isIndentBased=markdown || lexer==2 || lexer==48; // No closing suffix.
         const bool isHtml=(lexer==4 || lexer==5) && !phpCode && !jsCode && !aspJsCode && !cssCode;
         const auto html=isHtml?htmlInfo(w,line,last,firstText,lexer==5):HtmlInfo{};
         if(isHtml && html.cut<0) continue;
@@ -189,7 +194,7 @@ static void update(View& v,bool includeHidden=false) {
         const auto tail=isIndentBased?TailInfo{"",readLine(w,last)}:commentPos>=0 || isHtml?TailInfo{}:label(w,line,codeLexer);
         auto suffix=isHtml?html.suffix:commentPos>=0?std::string("*/"):tail.suffix;
         if(suffix.empty() && !isIndentBased) continue;
-        const bool commentBlock=commentPos>=0 || (isHtml && html.suffix=="-->");
+        const bool commentBlock=markdown || commentPos>=0 || (isHtml && html.suffix=="-->");
         const auto firstComment=commentBlock?TrailingComment{}:trailingComment(w,line,codeLexer,isIndentBased?pos:cut);
         const auto endLine=isHtml?html.endLine:isIndentBased?last:tail.line;
         const auto lastComment=commentBlock?TrailingComment{}:trailingComment(w,endLine,codeLexer,0);
@@ -211,7 +216,15 @@ static void update(View& v,bool includeHidden=false) {
         visual.y=static_cast<int>(send(w,2165,0,cut));
         visual.height=static_cast<int>(send(w,2279,line)); // SCI_TEXTHEIGHT
         visual.style=static_cast<int>(send(w,sci::GetStyleAt,cut>pos?cut-1:pos));
-        visual.text=L" \u2026 "+wide(suffix,cp);
+        visual.verticalMarker=markdown;
+        constexpr int markerBaseSize=1200; // 12 pt, in hundredths of a point.
+        const auto fontSize=displayFontSize(w,visual.style);
+        if(fontSize>markerBaseSize) {
+            visual.centerMarker=true;
+            visual.dotSize=MulDiv(2,fontSize,markerBaseSize);
+            visual.dotStep=MulDiv(4,fontSize,markerBaseSize);
+        }
+        visual.text=wide(suffix,cp);
         visual.commentStart=visual.text.size();
         visual.commentStyle=foldtail::singleLineCommentStyle(codeLexer);
         const auto firstShown=showFirstComment?firstComment.text:std::string{};
@@ -226,9 +239,11 @@ static void update(View& v,bool includeHidden=false) {
             visual.y+visual.height<=0 || visual.y>=client.bottom) continue;
         HFONT font=visualFont(w,visual.style,dc);
         HGDIOBJ old=font?SelectObject(dc,font):nullptr;
-        SIZE space{},dots{};
-        GetTextExtentPoint32W(dc,L" ",1,&space);GetTextExtentPoint32W(dc,L"\u2026",1,&dots);
-        visual.dots={visual.x+space.cx,visual.y,visual.x+space.cx+dots.cx,visual.y+visual.height};
+        SIZE space{};
+        GetTextExtentPoint32W(dc,L" ",1,&space);
+        visual.markerPadding=std::max(2L,space.cx);
+        const auto markerLeft=visual.x+visual.markerPadding;
+        visual.dots={markerLeft,visual.y,std::min<LONG>(client.right,markerLeft+visual.markerSpan()),visual.y+visual.height};
         if(old) SelectObject(dc,old);
         if(font) DeleteObject(font);
         next.emplace(line,std::move(visual));
@@ -251,6 +266,10 @@ static void update(View& v,bool includeHidden=false) {
         const bool added=old==v.visuals.end();
         const bool wasVisible=!added && old->second.visible;
         const bool sameImage=!added && old->second.text==entry.second.text &&
+            old->second.verticalMarker==entry.second.verticalMarker &&
+            old->second.centerMarker==entry.second.centerMarker &&
+            old->second.dotSize==entry.second.dotSize && old->second.dotStep==entry.second.dotStep &&
+            old->second.markerPadding==entry.second.markerPadding &&
             old->second.commentStart==entry.second.commentStart && old->second.commentStyle==entry.second.commentStyle &&
             old->second.style==entry.second.style && old->second.height==entry.second.height;
         const bool sameTip=!added && old->second.tip==entry.second.tip;
@@ -379,20 +398,46 @@ static void paintVisuals(View& v) {
             SetBkColor(buffer,normalBackground);
             ExtTextOutW(buffer,0,0,ETO_OPAQUE,&mask,nullptr,0,nullptr);
             SIZE textSize{};GetTextExtentPoint32W(buffer,visual.text.data(),static_cast<int>(visual.text.size()),&textSize);
-            RECT textMask{0,0,std::min<LONG>(width,textSize.cx),height};
+            const int textX=visual.markerPadding*2+visual.markerSpan();
+            RECT textMask{0,0,std::min<LONG>(width,textX+textSize.cx),height};
             SetBkColor(buffer,background);
-            ExtTextOutW(buffer,0,y,ETO_OPAQUE|ETO_CLIPPED,&textMask,visual.text.data(),static_cast<UINT>(visual.commentStart),nullptr);
-            const auto markerLength=std::min<size_t>(3,visual.commentStart);
-            SIZE markerSize{};GetTextExtentPoint32W(buffer,visual.text.data(),static_cast<int>(markerLength),&markerSize);
-            RECT markerMask{0,0,std::min<LONG>(width,markerSize.cx),height};
-            SetTextColor(buffer,markerForeground);SetBkColor(buffer,markerBackground);
-            ExtTextOutW(buffer,0,y,ETO_OPAQUE|ETO_CLIPPED,&markerMask,visual.text.data(),static_cast<UINT>(markerLength),nullptr);
+            ExtTextOutW(buffer,textX,y,ETO_OPAQUE|ETO_CLIPPED,&textMask,visual.text.data(),static_cast<UINT>(visual.commentStart),nullptr);
+            RECT markerMask{0,0,std::min(width,textX),height};
+            SetBkColor(buffer,markerBackground);
+            ExtTextOutW(buffer,0,0,ETO_OPAQUE,&markerMask,nullptr,0,nullptr);
+            if(HBRUSH dotsBrush=CreateSolidBrush(markerForeground)) {
+                const int markerHeight=visual.verticalMarker?visual.markerSpan():visual.dotSize;
+                auto top=visual.centerMarker?y+(metrics.tmHeight-markerHeight)/2:
+                    visual.verticalMarker?y+(metrics.tmHeight-markerHeight)/2+1:
+                    y+metrics.tmAscent-visual.dotSize-3;
+                if(visual.centerMarker) {
+                    // Align to visible ink, rather than the full font cell.
+                    // Code follows lowercase text; Markdown headings follow capitals.
+                    const MAT2 identity{{0,1},{0,0},{0,0},{0,1}};
+                    GLYPHMETRICS glyph{};
+                    const UINT reference=visual.verticalMarker?L'H':L'x';
+                    if(GetGlyphOutlineW(buffer,reference,GGO_METRICS,&glyph,0,nullptr,&identity)!=GDI_ERROR &&
+                        glyph.gmBlackBoxY>0) {
+                        top=y+metrics.tmAscent-glyph.gmptGlyphOrigin.y+
+                            (static_cast<LONG>(glyph.gmBlackBoxY)-markerHeight)/2;
+                    }
+                    top=std::clamp<LONG>(top,0,std::max(0,height-markerHeight));
+                }
+                for(int i=0;i<3;++i) {
+                    const int step=i*visual.dotStep;
+                    const int dx=visual.markerPadding+(visual.verticalMarker?visual.dotStep:step);
+                    const int dy=top+(visual.verticalMarker?step:0);
+                    const RECT dot{dx,dy,dx+visual.dotSize,dy+visual.dotSize};
+                    FillRect(buffer,&dot,dotsBrush);
+                }
+                DeleteObject(dotsBrush);
+            }
             if(visual.commentStart<visual.text.size()) {
                 SIZE prefix{};
                 GetTextExtentPoint32W(buffer,visual.text.data(),static_cast<int>(visual.commentStart),&prefix);
                 SetTextColor(buffer,commentColour);
                 const auto oldMode=SetBkMode(buffer,TRANSPARENT);
-                ExtTextOutW(buffer,prefix.cx,y,ETO_CLIPPED,&mask,visual.text.data()+visual.commentStart,
+                ExtTextOutW(buffer,textX+prefix.cx,y,ETO_CLIPPED,&mask,visual.text.data()+visual.commentStart,
                     static_cast<UINT>(visual.text.size()-visual.commentStart),nullptr);
                 SetBkMode(buffer,oldMode);
             }

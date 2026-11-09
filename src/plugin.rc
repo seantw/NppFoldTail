@@ -2,7 +2,7 @@
 #include "version.h"
 #include "resource.h"
 
-IDD_SETTINGS DIALOGEX 0, 0, 302, 269
+IDD_SETTINGS DIALOGEX 0, 0, 302, 285
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "NppFoldTail Settings"
 FONT 9, "Segoe UI"
@@ -12,22 +12,23 @@ BEGIN
     CONTROL "Show &First Comment", IDC_FIRST_COMMENT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 20, 47, 258, 12
     CONTROL "Show &Last Comment", IDC_LAST_COMMENT, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 20, 63, 258, 12
     LTEXT "Display only; the document is not changed.", -1, 20, 79, 258, 10
-    GROUPBOX "HTML", -1, 10, 101, 282, 47
+    GROUPBOX "Document folding", -1, 10, 101, 282, 63
     CONTROL "Fold CSS inside <&style>", IDC_CSS_FOLDING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 20, 116, 258, 12
     LTEXT "Multiline brace blocks and /* */ comments.", -1, 20, 132, 258, 10
-    GROUPBOX "Line spacing", -1, 10, 156, 282, 74
-    CONTROL "&Custom line spacing", IDC_CUSTOM_SPACING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 20, 171, 258, 12
-    LTEXT "Space &above:", -1, 20, 190, 65, 11
-    EDITTEXT IDC_ASCENT, 87, 187, 43, 15, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
-    CONTROL "", IDC_ASCENT_SPIN, "msctls_updown32", 0x0036, 120, 187, 10, 15
-    LTEXT "Space &below:", -1, 152, 190, 65, 11
-    EDITTEXT IDC_DESCENT, 219, 187, 43, 15, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
-    CONTROL "", IDC_DESCENT_SPIN, "msctls_updown32", 0x0036, 252, 187, 10, 15
-    LTEXT "0-20 pixels per side. Off keeps the original spacing.", -1, 20, 212, 258, 10
-    PUSHBUTTON "Restore &Defaults", IDC_DEFAULTS, 10, 245, 82, 16
-    DEFPUSHBUTTON "OK", IDOK, 119, 245, 53, 16
-    PUSHBUTTON "Cancel", IDCANCEL, 179, 245, 53, 16
-    PUSHBUTTON "&Apply", IDC_APPLY, 239, 245, 53, 16
+    CONTROL "Fold &Markdown headings", IDC_MARKDOWN_FOLDING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 20, 146, 258, 12
+    GROUPBOX "Line spacing", -1, 10, 172, 282, 74
+    CONTROL "&Custom line spacing", IDC_CUSTOM_SPACING, "Button", BS_AUTOCHECKBOX | WS_TABSTOP, 20, 187, 258, 12
+    LTEXT "Space &above:", -1, 20, 206, 65, 11
+    EDITTEXT IDC_ASCENT, 87, 203, 43, 15, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
+    CONTROL "", IDC_ASCENT_SPIN, "msctls_updown32", 0x0036, 120, 203, 10, 15
+    LTEXT "Space &below:", -1, 152, 206, 65, 11
+    EDITTEXT IDC_DESCENT, 219, 203, 43, 15, ES_NUMBER | ES_AUTOHSCROLL | WS_TABSTOP
+    CONTROL "", IDC_DESCENT_SPIN, "msctls_updown32", 0x0036, 252, 203, 10, 15
+    LTEXT "0-20 pixels per side. Off keeps the original spacing.", -1, 20, 228, 258, 10
+    PUSHBUTTON "Restore &Defaults", IDC_DEFAULTS, 10, 261, 82, 16
+    DEFPUSHBUTTON "OK", IDOK, 119, 261, 53, 16
+    PUSHBUTTON "Cancel", IDCANCEL, 179, 261, 53, 16
+    PUSHBUTTON "&Apply", IDC_APPLY, 239, 261, 53, 16
 END
 
 1 VERSIONINFO

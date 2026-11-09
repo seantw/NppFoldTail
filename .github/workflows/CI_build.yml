@@ -67,7 +67,6 @@ jobs:
            $zip = [IO.Compression.ZipFile]::Open($zipPath, [IO.Compression.ZipArchiveMode]::Create)
            try {
              [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, (Join-Path $PWD 'build/NppFoldTail.dll'), 'NppFoldTail.dll') | Out-Null
-             [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, (Join-Path $PWD 'LICENSE'), 'LICENSE') | Out-Null
            } finally {
              $zip.Dispose()
            }

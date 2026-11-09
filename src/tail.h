@@ -128,12 +128,31 @@ inline std::string withoutEol(std::string text) {
     while(!text.empty() && (text.back()=='\r' || text.back()=='\n')) text.pop_back();
     return text;
 }
-inline std::wstring preview(const std::vector<std::wstring>& lines,bool more=false) {
+inline std::wstring preview(std::vector<std::wstring> lines,bool more,size_t tabWidth) {
     std::wstring result;
     const auto count=lines.size()>10?10:lines.size();
+    const auto nextTab=[tabWidth](size_t column) {return column+tabWidth-column%tabWidth;};
+    const auto indentColumns=[&](const std::wstring& line,size_t end) {
+        size_t column=0;
+        for(size_t i=0;i<end;++i) column=line[i]==L'\t'?nextTab(column):column+1;
+        return column;
+    };
+    size_t baseIndent=0;
     for(size_t i=0;i<count;++i) {
-        auto line=lines[i];
+        const auto first=lines[i].find_first_not_of(L" \t\r\n");
+        if(first==std::wstring::npos) continue;
+        baseIndent=indentColumns(lines[i],first);
+        break;
+    }
+    for(size_t i=0;i<count;++i) {
+        auto& line=lines[i];
         while(!line.empty() && (line.back()==L'\r' || line.back()==L'\n')) line.pop_back();
+        const auto first=line.find_first_not_of(L" \t");
+        if(first==std::wstring::npos) line.clear();
+        else if(baseIndent) {
+            const auto columns=indentColumns(line,first);
+            line.replace(0,first,columns>baseIndent?columns-baseIndent:0,L' ');
+        }
         if(i) result+=L"\r\n";
         result+=line;
     }
@@ -149,7 +168,7 @@ inline std::wstring preview(const std::vector<std::wstring>& lines,bool more=fal
             for(size_t j=0;j<=last;++j) {
                 if(j==first) leading=column;
                 const auto c=line[j];
-                if(c==L'\t') column+=4-column%4;
+                if(c==L'\t') column=nextTab(column);
                 else column+=((c>=0x2E80 && c<=0xA4CF) ||
                     (c>=0xAC00 && c<=0xD7A3) || (c>=0xF900 && c<=0xFAFF) ||
                     (c>=0xFF01 && c<=0xFF60))?2:1;

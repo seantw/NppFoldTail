@@ -1,13 +1,13 @@
 #pragma once
 struct DialogOptions {
-    bool enable=true,first=false,last=false,css=true,spacing=false;
+    bool enable=true,first=false,last=false,css=true,markdown=false,spacing=false;
     int above=0,below=0;
     static DialogOptions current() {
-        return {enabled,showFirstComment,showLastComment,cssFolding,customLineSpacing,extraAscent,extraDescent};
+        return {enabled,showFirstComment,showLastComment,cssFolding,markdownFolding,customLineSpacing,extraAscent,extraDescent};
     }
     void activate() const {
         enabled=enable;showFirstComment=first;showLastComment=last;
-        cssFolding=css;customLineSpacing=spacing;extraAscent=above;extraDescent=below;
+        cssFolding=css;markdownFolding=markdown;customLineSpacing=spacing;extraAscent=above;extraDescent=below;
     }
 };
 struct SettingsDialogState {bool filling=false;};
@@ -22,6 +22,7 @@ static void fillSettings(HWND dialog,const DialogOptions& options,SettingsDialog
     CheckDlgButton(dialog,IDC_FIRST_COMMENT,options.first?BST_CHECKED:BST_UNCHECKED);
     CheckDlgButton(dialog,IDC_LAST_COMMENT,options.last?BST_CHECKED:BST_UNCHECKED);
     CheckDlgButton(dialog,IDC_CSS_FOLDING,options.css?BST_CHECKED:BST_UNCHECKED);
+    CheckDlgButton(dialog,IDC_MARKDOWN_FOLDING,options.markdown?BST_CHECKED:BST_UNCHECKED);
     CheckDlgButton(dialog,IDC_CUSTOM_SPACING,options.spacing?BST_CHECKED:BST_UNCHECKED);
     SetDlgItemInt(dialog,IDC_ASCENT,options.above,FALSE);
     SetDlgItemInt(dialog,IDC_DESCENT,options.below,FALSE);
@@ -35,6 +36,7 @@ static bool applyDialogSettings(HWND dialog) {
     options.first=IsDlgButtonChecked(dialog,IDC_FIRST_COMMENT)==BST_CHECKED;
     options.last=IsDlgButtonChecked(dialog,IDC_LAST_COMMENT)==BST_CHECKED;
     options.css=IsDlgButtonChecked(dialog,IDC_CSS_FOLDING)==BST_CHECKED;
+    options.markdown=IsDlgButtonChecked(dialog,IDC_MARKDOWN_FOLDING)==BST_CHECKED;
     options.spacing=IsDlgButtonChecked(dialog,IDC_CUSTOM_SPACING)==BST_CHECKED;
     for(const auto id:{IDC_ASCENT,IDC_DESCENT}) {
         BOOL valid=FALSE;
@@ -95,7 +97,7 @@ static INT_PTR CALLBACK settingsDialogProc(HWND dialog,UINT message,WPARAM a,LPA
                 return TRUE;
             }
             const bool check=id==IDC_ENABLE || id==IDC_FIRST_COMMENT || id==IDC_LAST_COMMENT ||
-                id==IDC_CSS_FOLDING || id==IDC_CUSTOM_SPACING;
+                id==IDC_CSS_FOLDING || id==IDC_MARKDOWN_FOLDING || id==IDC_CUSTOM_SPACING;
             const bool edit=id==IDC_ASCENT || id==IDC_DESCENT;
             if(!state->filling && ((check && HIWORD(a)==BN_CLICKED) || (edit && HIWORD(a)==EN_CHANGE))) {
                 spacingControls(dialog);

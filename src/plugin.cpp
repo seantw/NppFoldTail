@@ -11,6 +11,7 @@
 #include <memory>
 #include <cstring>
 #include <string>
+#include <string_view>
 #include "tail.h"
 #include "version.h"
 #include "resource.h"
@@ -37,6 +38,7 @@ static bool enabled = true;
 static bool showFirstComment = false;
 static bool showLastComment = false;
 static bool cssFolding = true;
+static bool markdownFolding = false;
 static bool customLineSpacing = false;
 static int extraAscent = 0,extraDescent = 0;
 struct PreviewBitmap {
@@ -53,6 +55,10 @@ struct Visual {
     RECT mask{}, dots{};
     int x{}, y{}, height{}, style{};
     int commentStyle{};
+    bool verticalMarker{};
+    bool centerMarker{};
+    int dotSize=2,dotStep=4,markerPadding{};
+    int markerSpan() const {return dotStep*2+dotSize;}
     size_t commentStart{};
     LRESULT selectionTrigger{}, blockEnd{};
     std::wstring text, tip;
@@ -69,6 +75,9 @@ struct View {
     bool presentationActive{};
     bool settingFoldFlags{};
     bool addedClipChildren{};
+    bool markdownFile{},markdownActive{};
+    LRESULT markdownDoc{},markdownBuffer{};
+    ULONGLONG markdownPathChecked{};
     bool spacingCaptured{},settingSpacing{};
     int originalAscent{},originalDescent{};
     WPARAM originalFoldFlags=16; // Notepad++ default: line after contracted fold.
@@ -119,7 +128,7 @@ static void restoreLines(View& v) {
 }
 static bool applyPresentation(View& v) {
     applyLineSpacing(v);
-    const bool active=enabled && foldtail::supported(static_cast<int>(send(v.window,sci::GetLexer)));
+    const bool active=enabled && (v.markdownActive || foldtail::supported(static_cast<int>(send(v.window,sci::GetLexer))));
     if(active!=v.presentationActive) {
         send(v.window,sci::FoldDisplayTextSetStyle,active?0:v.originalStyle);
         v.settingFoldFlags=true;
@@ -140,6 +149,7 @@ static std::string readLine(HWND w, LRESULT line) {
     return s;
 }
 #include "css.h"
+#include "markdown.h"
 struct TailInfo { std::string suffix, raw; LRESULT line=-1; };
 static TailInfo label(HWND w, LRESULT header,int lexer) {
     if (!foldtail::supported(lexer)) return {};
@@ -309,7 +319,7 @@ static LRESULT CALLBACK subclass(HWND w,UINT msg,WPARAM a,LPARAM b,UINT_PTR id,D
     }
     if(msg==2233) { // SCI_SETFOLDFLAGS: remember host updates, suppress fold lines.
         if(!v.settingFoldFlags) v.originalFoldFlags=a;
-        if(enabled && foldtail::supported(static_cast<int>(send(w,sci::GetLexer)))) a=0;
+        if(enabled && (v.markdownActive || foldtail::supported(static_cast<int>(send(w,sci::GetLexer))))) a=0;
     }
     if(msg==WM_TIMER && a==v.timer) {
         // Never let allocation failures escape a Windows callback.
@@ -393,6 +403,7 @@ static void loadSettings() {
     showFirstComment=GetPrivateProfileIntW(L"Settings",L"FirstComment",0,settingsPath.c_str())!=0;
     showLastComment=GetPrivateProfileIntW(L"Settings",L"LastComment",0,settingsPath.c_str())!=0;
     cssFolding=GetPrivateProfileIntW(L"Settings",L"CssFolding",1,settingsPath.c_str())!=0;
+    markdownFolding=GetPrivateProfileIntW(L"Settings",L"MarkdownFolding",0,settingsPath.c_str())!=0;
     customLineSpacing=GetPrivateProfileIntW(L"Settings",L"CustomLineSpacing",0,settingsPath.c_str())!=0;
     extraAscent=std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Settings",L"ExtraAscent",0,settingsPath.c_str())),0,20);
     extraDescent=std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Settings",L"ExtraDescent",0,settingsPath.c_str())),0,20);
@@ -406,6 +417,7 @@ static bool saveSettings() {
         saved=(WritePrivateProfileStringW(L"Settings",L"FirstComment",showFirstComment?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"LastComment",showLastComment?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"CssFolding",cssFolding?L"1":L"0",settingsPath.c_str())!=0) && saved;
+        saved=(WritePrivateProfileStringW(L"Settings",L"MarkdownFolding",markdownFolding?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"CustomLineSpacing",customLineSpacing?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"ExtraAscent",std::to_wstring(extraAscent).c_str(),settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"ExtraDescent",std::to_wstring(extraDescent).c_str(),settingsPath.c_str())!=0) && saved;
@@ -441,16 +453,28 @@ __declspec(dllexport) void beNotified(NMHDR* notification) {
         const auto change=reinterpret_cast<const Modification*>(notification);
         if(change->modificationType&0xf) { // text, styles or native fold levels changed
             for(const auto& view:views) if(view.window==notification->hwndFrom) {
-                cssDocuments[send(view.window,sci::GetDocPointer)].dirty=true;
+                const auto doc=send(view.window,sci::GetDocPointer);
+                cssDocuments[doc].dirty=true;
+                auto md=markdownDocuments.find(view.markdownBuffer);
+                if(md!=markdownDocuments.end() && view.markdownDoc==doc) md->second.dirty=true;
                 break;
             }
         }
+    }
+    if(notification->code==1005) markdownDocuments.erase(notification->idFrom); // NPPN_FILECLOSED
+    if(notification->code==1004 || notification->code==1010 || notification->code==1011) {
+        // File opened, buffer activated or language changed: refresh after the
+        // host finishes initializing the buffer, in the normal update loop.
+        for(auto& view:views) view.markdownPathChecked=0;
+        const auto md=markdownDocuments.find(notification->idFrom);
+        if(md!=markdownDocuments.end()) md->second.dirty=true;
     }
     if(notification->code==1001) {loadSettings();start();} // NPPN_READY
     if(notification->code==1009) { // NPPN_SHUTDOWN
         enabled=false;
         for(auto& v:views) if(IsWindow(v.window)) {
             applyLineSpacing(v);
+            refreshMarkdownFolds(v);
             refreshCssFolds(v.window);
             clearVisuals(v); if(v.tooltip) DestroyWindow(v.tooltip);v.tooltip=nullptr;
             KillTimer(v.window,v.timer);
