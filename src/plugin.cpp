@@ -39,6 +39,7 @@ static bool showFirstComment = false;
 static bool showLastComment = false;
 static bool cssFolding = true;
 static bool markdownFolding = false;
+static bool markdownBlocks = false;
 static bool customLineSpacing = false;
 static int extraAscent = 0,extraDescent = 0;
 struct PreviewBitmap {
@@ -404,6 +405,7 @@ static void loadSettings() {
     showLastComment=GetPrivateProfileIntW(L"Settings",L"LastComment",0,settingsPath.c_str())!=0;
     cssFolding=GetPrivateProfileIntW(L"Settings",L"CssFolding",1,settingsPath.c_str())!=0;
     markdownFolding=GetPrivateProfileIntW(L"Settings",L"MarkdownFolding",0,settingsPath.c_str())!=0;
+    markdownBlocks=GetPrivateProfileIntW(L"Settings",L"MarkdownBlocks",0,settingsPath.c_str())!=0;
     customLineSpacing=GetPrivateProfileIntW(L"Settings",L"CustomLineSpacing",0,settingsPath.c_str())!=0;
     extraAscent=std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Settings",L"ExtraAscent",0,settingsPath.c_str())),0,20);
     extraDescent=std::clamp(static_cast<int>(GetPrivateProfileIntW(L"Settings",L"ExtraDescent",0,settingsPath.c_str())),0,20);
@@ -418,6 +420,7 @@ static bool saveSettings() {
         saved=(WritePrivateProfileStringW(L"Settings",L"LastComment",showLastComment?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"CssFolding",cssFolding?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"MarkdownFolding",markdownFolding?L"1":L"0",settingsPath.c_str())!=0) && saved;
+        saved=(WritePrivateProfileStringW(L"Settings",L"MarkdownBlocks",markdownBlocks?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"CustomLineSpacing",customLineSpacing?L"1":L"0",settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"ExtraAscent",std::to_wstring(extraAscent).c_str(),settingsPath.c_str())!=0) && saved;
         saved=(WritePrivateProfileStringW(L"Settings",L"ExtraDescent",std::to_wstring(extraDescent).c_str(),settingsPath.c_str())!=0) && saved;

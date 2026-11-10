@@ -47,10 +47,10 @@ Requires Windows and Notepad++ x64. x86 and ARM64 builds are not provided.
 
 Manually tested with Notepad++ v8.9.8.1 (64-bit). Compatibility with other versions has not been verified.
 
-1. Download `NppFoldTail-0.11.0-x64.zip` from [Releases](https://github.com/seantw/NppFoldTail/releases).
+1. Download `NppFoldTail-0.12.0-x64.zip` from [Releases](https://github.com/seantw/NppFoldTail/releases).
 2. Close all Notepad++ windows.
 3. Extract the ZIP and place `NppFoldTail.dll` in `Notepad++/plugins/NppFoldTail/`.
-4. Restart Notepad++ and check **Plugins → NppFoldTail → About NppFoldTail** for version **0.11.0**.
+4. Restart Notepad++ and check **Plugins → NppFoldTail → About NppFoldTail** for version **0.12.0**.
 
 ## Options
 
@@ -63,6 +63,7 @@ Under **Plugins → NppFoldTail**, **Enable** remains a quick toggle. Open **Set
 | Last Comment | Off | Appends a trailing comment from the closing line |
 | Fold CSS inside `<style>` | On | Adds folds for embedded CSS brace blocks and multiline comments |
 | Fold Markdown headings | Off | Adds heading folds in Markdown files without changing UDL syntax highlighting |
+| Fold Markdown blocks | Off | Folds tables, fenced code blocks, outermost lists and consecutive link reference definitions |
 | Custom line spacing | Off | Sets extra space above and below each display line in both editor views |
 | Space above / below | 0 / 0 pixels | Each side accepts a whole number from 0 to 20 when custom spacing is enabled |
 
@@ -74,11 +75,13 @@ Settings are saved to `NppFoldTail.ini` in Notepad++'s plugin configuration dire
 
 Custom line spacing is off by default, so the plugin leaves existing editor spacing alone. Turning custom spacing or Enable off restores each view's original spacing. Spacing affects display only, across languages, and does not change font size or document text. CSS folding can be disabled independently while other previews remain enabled.
 
-## Markdown heading folding
+## Markdown folding
 
 Enable **Fold Markdown headings** in **Settings...**, then open a `.md` or `.markdown` file. ATX headings (`#` through `######`) fold everything below them up to, but excluding, the next heading of the same or higher level. If there is no such heading, the fold extends to the end of the document. Headings in fenced code blocks are ignored. Setext headings (underlined with `=` or `-`) are not supported.
 
 A collapsed heading displays `⋮`. Hover over it to preview the section, click it to expand, or click the space to its right to move to the next visible line. Turning off the option removes the plugin's heading folds. Use a Markdown UDL or plain text mode; a file assigned to another lexer already supported by NppFoldTail keeps that lexer's folding behaviour.
+
+Enable **Fold Markdown blocks** to fold tables, fenced code blocks, outermost ordered or unordered lists and consecutive link reference definitions (`[label]: URL`) independently of headings. A folded block shows `⋮` after its first line. Code fences work with or without a language name. Nested list content folds with the outer list, including unindented continuation lines after a two-space hard break. Fenced code does not create internal heading or block folds. When both options are enabled, blocks can fold individually or together under their parent heading.
 
 ## Selecting folded content
 
@@ -108,6 +111,12 @@ GitHub Actions also compiles x64 and x86 builds. Releases may use either a local
 - PowerShell block comments are not previewed.
 - Synthetic preview text cannot be edited directly.
 - Embedded CSS folds are rebuilt after text or lexer changes, not while scrolling. Strings and URLs are excluded from brace/comment matching. Only complete multiline pairs create new folds; disabling the plugin restores native folding. CSS colours remain those provided by Notepad++'s HTML mode.
+
+## Changes in 0.12.0
+
+- Adds a separate Markdown block folding option for tables, fenced code, outermost lists and consecutive link reference definitions.
+- Supports code fences without a language name and list continuation lines after two-space hard breaks.
+- Lets Markdown blocks fold independently or together with their parent heading.
 
 ## Changes in 0.11.0
 
